@@ -6,6 +6,7 @@ import { getBearerToken, validateJWT } from "../auth";
 import { getVideo, updateVideo } from "../db/videos";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import { getVideoOrientation, processVideoForFastStart } from "../helpers";
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -43,10 +44,15 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   const localFilePath = path.join(cfg.assetsRoot, `${id}.mp4`);
   await Bun.write(localFilePath, rawFile);
+  const orientation = await getVideoOrientation(localFilePath);
 
-  const videoS3Key = `${videoId}.mp4`;
+  const processedFilePath = await processVideoForFastStart(localFilePath);
+
+  console.log("Heyyyyy ✌️processed file at: ", processedFilePath);
+
+  const videoS3Key = `${orientation}/${videoId}.mp4`;
   const s3File = cfg.s3Client.file(videoS3Key, { type: video.type });
-  const tempFile = Bun.file(localFilePath);
+  const tempFile = Bun.file(processedFilePath);
   await Bun.write(s3File, tempFile)
 
   const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoS3Key}`
@@ -56,6 +62,7 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const updatedVideo = getVideo(cfg.db, videoId);
 
   await Bun.file(localFilePath).delete();
+  await Bun.file(processedFilePath).delete();
 
   return respondWithJSON(200, updatedVideo);
 }
