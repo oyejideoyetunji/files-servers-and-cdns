@@ -6,7 +6,7 @@ import { getBearerToken, validateJWT } from "../auth";
 import { getVideo, updateVideo } from "../db/videos";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { getVideoOrientation, processVideoForFastStart } from "../helpers";
+import { dbVideoToSignedVideo, getVideoOrientation, processVideoForFastStart } from "../helpers";
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -48,21 +48,23 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   const processedFilePath = await processVideoForFastStart(localFilePath);
 
-  console.log("Heyyyyy ✌️processed file at: ", processedFilePath);
-
   const videoS3Key = `${orientation}/${videoId}.mp4`;
   const s3File = cfg.s3Client.file(videoS3Key, { type: video.type });
   const tempFile = Bun.file(processedFilePath);
   await Bun.write(s3File, tempFile)
 
-  const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoS3Key}`
+  // const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoS3Key}`
 
-  updateVideo(cfg.db, { ...videoMeta, videoURL });
+  updateVideo(cfg.db, { ...videoMeta, videoURL: videoS3Key });
 
   const updatedVideo = getVideo(cfg.db, videoId);
 
   await Bun.file(localFilePath).delete();
   await Bun.file(processedFilePath).delete();
 
-  return respondWithJSON(200, updatedVideo);
+  if (!updatedVideo) {
+    throw new Error("an unexpected error occurred");
+  }
+
+  return respondWithJSON(200, dbVideoToSignedVideo(cfg, dbVideoToSignedVideo(cfg, updatedVideo)));
 }
