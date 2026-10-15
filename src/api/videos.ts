@@ -1,12 +1,12 @@
-import { respondWithJSON } from "./json";
-import { type ApiConfig } from "../config";
 import { type BunRequest } from "bun";
-import { BadRequestError, UserForbiddenError } from "./errors";
-import { getBearerToken, validateJWT } from "../auth";
-import { getVideo, updateVideo } from "../db/videos";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { dbVideoToSignedVideo, getVideoOrientation, processVideoForFastStart } from "../helpers";
+import { getBearerToken, validateJWT } from "../auth";
+import { type ApiConfig } from "../config";
+import { getVideo, updateVideo } from "../db/videos";
+import { getVideoOrientation, processVideoForFastStart } from "../helpers";
+import { BadRequestError, UserForbiddenError } from "./errors";
+import { respondWithJSON } from "./json";
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -51,11 +51,11 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const videoS3Key = `${orientation}/${videoId}.mp4`;
   const s3File = cfg.s3Client.file(videoS3Key, { type: video.type });
   const tempFile = Bun.file(processedFilePath);
-  await Bun.write(s3File, tempFile)
+  await Bun.write(s3File, tempFile);
 
-  // const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoS3Key}`
+  const videoURL = `${cfg.s3CfDistribution}/${videoS3Key}`;
 
-  updateVideo(cfg.db, { ...videoMeta, videoURL: videoS3Key });
+  updateVideo(cfg.db, { ...videoMeta, videoURL });
 
   const updatedVideo = getVideo(cfg.db, videoId);
 
@@ -66,5 +66,5 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     throw new Error("an unexpected error occurred");
   }
 
-  return respondWithJSON(200, dbVideoToSignedVideo(cfg, dbVideoToSignedVideo(cfg, updatedVideo)));
+  return respondWithJSON(200, updatedVideo);
 }
